@@ -118,7 +118,7 @@ def generate_customer_session(user_id, user_data, referrer, device_info):
     session_data = {
         "sessionId": fake.uuid4(),
         "userId": user_id, #fake.uuid4(),
-        "sessionTimestamp": recent_datetime(), #fake.iso8601(), #datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S.%f%z'),  #fake.iso8601(),
+        "sessionTimestamp": recent_datetime(), 
         "productIds": browsing_pattern,
         "productNames": [furniture_items[pid]["name"] for pid in browsing_pattern],
         "productPrices": [furniture_items[pid]["price"] for pid in browsing_pattern],
@@ -128,9 +128,9 @@ def generate_customer_session(user_id, user_data, referrer, device_info):
         "gender": user_data['gender'],
         "email": user_data['email'],
         "deviceInformation": {
-            "deviceType": device_info['deviceType'], #random.choice(["mobile", "desktop", "tablet", "unknown"]),
-            "operatingSystem": device_info['operatingSystem'], #fake.user_agent(),
-            "browserType": device_info['browserType'], #fake.user_agent(),
+            "deviceType": device_info['deviceType'], 
+            "operatingSystem": device_info['operatingSystem'], 
+            "browserType": device_info['browserType'], 
         },
         "locationData": {
             "country": "United States",
@@ -145,7 +145,7 @@ def generate_customer_session(user_id, user_data, referrer, device_info):
         "timeSpentonEachPage": [random.randint(10, 120) for _ in browsing_pattern],
         "clicks": random.randint(1, 50),
         "actions": action,
-        "referrer": referrer, # random.choice(referrer_sources),
+        "referrer": referrer, 
         "exitPage": furniture_items[random.choice(browsing_pattern)]["name"],  # Exit page is one of the visited pages
         "purchaseMade": purchase_made,
         "amountSpent": amount_spent,

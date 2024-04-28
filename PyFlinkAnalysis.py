@@ -31,6 +31,11 @@ from pyflink.datastream.connectors.kafka import KafkaSink, KafkaRecordSerializat
 from pyflink.common.serialization import SimpleStringSchema
 #from pyflink.datastream import DeliveryGuarantee
 from pyflink.datastream.connectors.base import DeliveryGuarantee
+from datetime import datetime
+# from pyflink.datastream.state import ValueStateDescriptor
+# from pyflink.datastream.functions import KeyedProcessFunction, RuntimeContext
+# from pyflink.datastream.state import ValueState
+# from datasketch import MinHash, MinHashLSH
 
 
 from pyflink.common.typeinfo import RowTypeInfo
@@ -65,6 +70,19 @@ class ExpandSessionToProductDetails(FlatMapFunction):
 class SessionSummary(MapFunction):
     def map(self, value):
         data = json.loads(value)
+        print("data is : ", data)
+        
+        # Convert sessionTimestamp to datetime
+        session_timestamp = datetime.fromisoformat(data['sessionTimestamp'])
+        
+        # Extract parts of the timestamp into separate fields
+        hour_of_day = session_timestamp.hour
+        day_of_week = session_timestamp.strftime('%A')
+        is_weekend = int(day_of_week in ['Saturday', 'Sunday'])
+        month = session_timestamp.month
+        week_of_year = int(session_timestamp.strftime('%V'))
+        part_of_day = self.map_hour_to_part_of_day(hour_of_day)
+        
         product_flags = [0] * 10  # There are 10 flags, one for each product ID from 1 to 10.
         for product_id in data['browsingPattern']:
             if 1 <= product_id <= 10:  # Ensure product_id is within the range of 1 to 10.
@@ -77,15 +95,26 @@ class SessionSummary(MapFunction):
             'userId': data['userId'],
             'userName': data['name'],
             'email': data['email'],
+            'gender':data['gender'],
             'state': data['locationData']['state'],
             'ipAddress': data['ipAddress'],
             'sessionDuration': data['sessionDuration'],
             'clicks': data['clicks'],
             'exitPage': data['exitPage'],
+            'referrer': data['referrer'],
             'deviceType': data['deviceInformation']['deviceType'],
+            'action': data['actions'],
             'paymentMethodType': data['paymentMethodType'],
             'amountSpent': data['amountSpent'],
-            'purchaseMade': data['purchaseMade']
+            'purchaseMade': data['purchaseMade'],
+            # Update the original data with the new fields
+            'hour_of_day': hour_of_day,
+            'day_of_week': day_of_week,
+            'is_weekend': is_weekend,
+            'month': month,
+            'week_of_year': week_of_year,
+            'part_of_day': part_of_day
+        
         }
 
         # Add the product flags to the result dictionary dynamically
@@ -93,6 +122,47 @@ class SessionSummary(MapFunction):
             result[f'isViewedProduct{i + 1}'] = product_flags[i]
 
         return result
+    
+    @staticmethod
+    def map_hour_to_part_of_day(hour):
+        if 5 <= hour < 12:
+            return 'Morning'
+        elif 12 <= hour < 17:
+            return 'Afternoon'
+        elif 17 <= hour < 21:
+            return 'Evening'
+        else:
+            return 'Night'
+        
+# class LSHKeyedProcessFunction(KeyedProcessFunction):
+#     def __init__(self, num_perm):
+#         self.num_perm = num_perm
+#         self.minhash_state_desc = None
+#         self.lsh = MinHashLSH(threshold=0.5, num_perm=self.num_perm)
+
+#     def open(self, runtime_context: RuntimeContext):
+#         state_descriptor = ValueStateDescriptor("minhash", Types.PICKLED_BYTE_ARRAY())
+#         self.minhash_state_desc = runtime_context.get_state(state_descriptor)
+
+#     def process_element(self, value, ctx: 'KeyedProcessFunction.Context'):
+#         # Get current MinHash state for the user
+#         current_minhash = self.minhash_state_desc.value()
+#         if current_minhash is None:
+#             current_minhash = MinHash(num_perm=self.num_perm)
+
+#         # Update MinHash with new session data
+#         session_data = json.loads(value)
+#         for feature in session_data:
+#             if feature not in ['sessionId', 'userId', 'userName']:
+#                 current_minhash.update(str(session_data[feature]).encode('utf-8'))
+
+#         # Save updated MinHash state
+#         self.minhash_state_desc.update(current_minhash)
+
+#         # Query LSH for similar users and emit results
+#         similar_user_ids = self.lsh.query(current_minhash)
+#         yield (session_data['userId'], [uid for uid in similar_user_ids if uid != session_data['userId']])
+
 
 class ElasticsearchSinkFunction(MapFunction):
     def __init__(self, index_name):
@@ -157,9 +227,13 @@ def main():
     
     #Process the data using the flat_map and map functions
     session_summary_stream = data_stream.map(SessionSummary())
-    ## process product variables that came as a list..flattened for further analysis
+    #process product variables that came as a list..flattened for further analysis
     product_details_stream = data_stream.flat_map(ExpandSessionToProductDetails())
     
+    
+    #keyed_stream = session_summary_stream.key_by(lambda x: json.loads(x)['userId'])  # Key by userId
+    # Process keyed stream with LSH logic
+    #similar_users_stream = keyed_stream.process(LSHKeyedProcessFunction(num_perm=500))
 
     #session_summary_stream.print() # tested to see if coming properly
     #product_details_stream.print()
@@ -168,74 +242,16 @@ def main():
     session_summary_stream = create_elasticsearch_sink(session_summary_stream, "session_summary")
     product_details_stream = create_elasticsearch_sink(product_details_stream, "product_details")
     sentiment_product_stream = create_sentiment_elasticsearch_sink(product_details_stream, "product_sentiment")
+    #similar_users_stream = create_sentiment_elasticsearch_sink(product_details_stream, "similar_users")
     
     # print them to see the piepline changes with sentiments
     session_summary_stream.print()
     product_details_stream.print()
     sentiment_product_stream.print()
-    
-        
+    #similar_users_stream.print()
+            
     # Execute the program
     env.execute("Process User Session Data")
 
 if __name__ == "__main__":
     main()
-    
-    # def consume_topic_to_mongodb(kafka_topic, mongo_collection):
-    # # Setup MongoDB connection
-    # client = MongoClient('localhost', 49153)
-    # print("Connection established -mongodb")
-    # db = client['user_database']
-    # print("user_datbase created/exists.")
-    # collection = db[mongo_collection]
-
-    # properties = {
-    #     'bootstrap.servers': '10.0.0.244:29092',
-    #     'group.id': 'flink-mongo-group',
-    # }
-
-    # # First step is to listen to valid customer session topic coming from kafka producer
-    # consumer = FlinkKafkaConsumer(
-    #     topics=kafka_topic,
-    #     deserialization_schema=SimpleStringSchema(),
-    #     auto_offset_reset='earliest',  # Start reading at the earliest message
-    #     properties=properties
-    # )
-    
-    # print(f"Consuming messages from topic: {kafka_topic}")
-    # for message in consumer:
-    #     try:
-    #         # Parse the message value from bytes to dict
-    #         record = json.loads(message.value.decode('utf-8'))
-    #         # Insert the record into MongoDB
-    #         collection.insert_one(record)
-    #         print(f"Inserted record into {mongo_collection}: {record}")
-    #     except Exception as e:
-    #         print(f"Error processing message: {e}")
-            
-    # def create_kafka_sink(brokers, topic_name):
-    # return KafkaSink.builder() \
-    #     .set_bootstrap_servers(brokers) \
-    #     .set_record_serializer(
-    #         KafkaRecordSerializationSchema.builder()
-    #             .set_topic(topic_name)
-    #             .set_value_serialization_schema(SimpleStringSchema())
-    #             .build()
-    #     ) \
-    #     .set_delivery_guarantee(DeliveryGuarantee.AT_LEAST_ONCE) \
-    #     .build()
-    
-    # Attach the sinks
-    #session_summary_stream.sink_to(session_summary_sink)
-    #product_details_stream.sink_to(product_details_sink)
-    #sentiment_product_stream.sink_to(sentiment_product_details_sink)
-
-    # MongoDB ingestion from the above streams
-    # Consume from session_summary topic to session_summary collection
-    #consume_topic_to_mongodb('session_summary_topic', 'session_summary')
-
-    # Consume from product_details topic to product_details collection
-   # consume_topic_to_mongodb('product_details_topic', 'product_details')
-
-    
-    #collection.insert_one(value)
