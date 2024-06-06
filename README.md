@@ -6,9 +6,9 @@ The landscape of e-commerce analytics is rapidly
 evolving with the advent of real-time data processing and
 advanced machine learning techniques. A critical challenge in this
 domain is the effective integration of real-time analytics with deep
-offline analysis to enhance user experience and operational efficiency. 
+offline analysis to enhance user experience and operational efficiency. 
 Prior works have predominantly focused on either offline batch processing 
-for user behavior analysis or real-time monitoring without deeper predictive insights. 
+for user behavior analysis or real-time monitoring without deeper predictive insights. 
 Our work bridges this gap by introducing a hybrid analytical framework that leverages both
 real-time stream processing and comprehensive offline machine
 learning models while employing cutting edge technologies. Our
